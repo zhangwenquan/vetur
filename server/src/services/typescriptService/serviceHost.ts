@@ -19,21 +19,6 @@ function patchTS(tsModule: T_TypeScript) {
   (tsModule as any).updateLanguageServiceSourceFile = updateLanguageServiceSourceFile;
 }
 
-function getDefaultCompilerOptions(tsModule: T_TypeScript) {
-  const defaultCompilerOptions: ts.CompilerOptions = {
-    allowNonTsExtensions: true,
-    allowJs: true,
-    lib: ['lib.dom.d.ts', 'lib.es2017.d.ts'],
-    target: tsModule.ScriptTarget.Latest,
-    moduleResolution: tsModule.ModuleResolutionKind.NodeJs,
-    module: tsModule.ModuleKind.CommonJS,
-    jsx: tsModule.JsxEmit.Preserve,
-    allowSyntheticDefaultImports: true
-  };
-
-  return defaultCompilerOptions;
-}
-
 /**
  * SourceMap from template to virtual TS nodes
  */
@@ -112,10 +97,6 @@ export function getServiceHost(
   function updateExternalDocument(filePath: string) {
     const ver = versions.get(filePath) || 0;
     versions.set(filePath, ver + 1);
-  }
-
-  function getScriptDocByFsPath(fsPath: string) {
-    return scriptDocs.get(fsPath);
   }
 
   function createLanguageServiceHost(options: ts.CompilerOptions): ts.LanguageServiceHost {
@@ -239,7 +220,6 @@ export function getServiceHost(
   return {
     updateCurrentTextDocument,
     updateExternalDocument,
-    getScriptDocByFsPath,
     dispose: () => {
       jsLanguageService.dispose();
     }
@@ -248,32 +228,6 @@ export function getServiceHost(
 
 function getNormalizedFileFsPath(fileName: string): string {
   return Uri.file(fileName).fsPath;
-}
-
-/**
- * If the path ends with `.vue.ts`, it's a `.vue` file pre-processed by Vetur
- * to be used in TS Language Service
- */
-function isVirtualVueFile(path: string) {
-  return path.endsWith('.vue.ts') && !path.includes('node_modules');
-}
-/**
- * If the path ends with `.vue.template`, it's a `.vue` file's template part
- * pre-processed by Vetur to calculate template diagnostics in TS Language Service
- */
-export function isVirtualVueTemplateFile(path: string) {
-  return path.endsWith('.vue.template');
-}
-
-function defaultIgnorePatterns(tsModule: T_TypeScript, workspacePath: string) {
-  const nodeModules = ['node_modules', '**/node_modules/*'];
-  const gitignore = tsModule.findConfigFile(workspacePath, tsModule.sys.fileExists, '.gitignore');
-  if (!gitignore) {
-    return nodeModules;
-  }
-  const parsed: string[] = parseGitIgnore(gitignore);
-  const filtered = parsed.filter(s => !s.startsWith('!'));
-  return nodeModules.concat(filtered);
 }
 
 function getScriptKind(tsModule: T_TypeScript, langId: string): ts.ScriptKind {

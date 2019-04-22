@@ -12,7 +12,8 @@ import {
   renderHelperName,
   listenerHelperName
 } from './transformTemplate';
-import { isVirtualVueTemplateFile, templateSourceMap, TemplateSourceMapNode } from './serviceHost';
+import { templateSourceMap, TemplateSourceMapNode } from './serviceHost';
+import { isVirtualVueTemplateFile } from './util';
 
 export function isVue(filename: string): boolean {
   return path.extname(filename) === '.vue';

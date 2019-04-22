@@ -43,6 +43,7 @@ import { DependencyService } from './dependencyService';
 import * as _ from 'lodash';
 import { DocumentContext, RefactorAction } from '../types';
 import { DocumentService } from './documentService';
+import { VueTypescriptLanguageService } from './typescriptService/vueTypescriptLanguageService';
 
 export class VLS {
   // @Todo: Remove this and DocumentContext
@@ -51,6 +52,7 @@ export class VLS {
   private documentService: DocumentService;
   private vueInfoService: VueInfoService;
   private dependencyService: DependencyService;
+  private vueTypescriptLanguageService: VueTypescriptLanguageService;
 
   private languageModes: LanguageModes;
 
@@ -72,6 +74,7 @@ export class VLS {
     this.documentService = new DocumentService(this.lspConnection);
     this.vueInfoService = new VueInfoService();
     this.dependencyService = new DependencyService();
+    this.vueTypescriptLanguageService = new VueTypescriptLanguageService();
 
     this.languageModes = new LanguageModes();
   }
@@ -94,6 +97,7 @@ export class VLS {
         ? _.get(params.initializationOptions.config, ['vetur', 'useWorkspaceDependencies'], false)
         : false
     );
+    await this.vueTypescriptLanguageService.init(this.dependencyService, this.workspacePath);
     await this.languageModes.init(workspacePath, {
       infoService: this.vueInfoService,
       dependencyService: this.dependencyService
