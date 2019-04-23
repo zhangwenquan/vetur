@@ -511,7 +511,7 @@ export async function getJavascriptMode(
   };
 }
 
-function collectRefactoringCommands(
+export function collectRefactoringCommands(
   refactorings: ts.ApplicableRefactorInfo[],
   fileName: string,
   formatSettings: any,
@@ -554,7 +554,7 @@ function collectRefactoringCommands(
   }
 }
 
-function collectQuickFixCommands(
+export function collectQuickFixCommands(
   fixes: ReadonlyArray<ts.CodeFixAction>,
   service: ts.LanguageService,
   result: Command[]
@@ -686,7 +686,7 @@ function convertOptions(
   });
 }
 
-function getFormatCodeSettings(config: any): ts.FormatCodeSettings {
+export function getFormatCodeSettings(config: any): ts.FormatCodeSettings {
   return {
     tabSize: config.vetur.format.options.tabSize,
     indentSize: config.vetur.format.options.tabSize,

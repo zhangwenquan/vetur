@@ -7,10 +7,18 @@ import {
   MarkedString,
   Range,
   Location,
-  Definition
+  Definition,
+  FormattingOptions,
+  CodeActionContext,
+  Command
 } from 'vscode-languageserver-types';
 import { IServiceHost } from '../../services/typescriptService/serviceHost';
-import { languageServiceIncludesFile } from '../script/javascript';
+import {
+  languageServiceIncludesFile,
+  getFormatCodeSettings,
+  collectQuickFixCommands,
+  collectRefactoringCommands
+} from '../script/javascript';
 import { getFileFsPath } from '../../utils/paths';
 import { mapBackRange, mapFromPositionToOffset } from '../../services/typescriptService/sourceMap';
 import * as ts from 'typescript';
@@ -19,6 +27,8 @@ import * as _ from 'lodash';
 
 export class VueInterpolationMode implements LanguageMode {
   private config: any = {};
+
+  private supportedCodeFixCodes: Set<number>;
 
   constructor(private tsModule: T_TypeScript, private serviceHost: IServiceHost) {}
 
@@ -205,6 +215,68 @@ export class VueInterpolationMode implements LanguageMode {
       }
     });
     return referenceResults;
+  }
+
+  getCodeActions(document: TextDocument, range: Range, _formatParams: FormattingOptions, context: CodeActionContext) {
+    if (!_.get(this.config, ['vetur', 'experimental', 'templateInterpolationService'], true)) {
+      return [];
+    }
+
+    // Add suffix to process this doc as vue template.
+    const templateDoc = TextDocument.create(
+      document.uri + '.template',
+      document.languageId,
+      document.version,
+      document.getText()
+    );
+
+    const { templateService, templateSourceMap } = this.serviceHost.updateCurrentTextDocument(templateDoc);
+    if (!languageServiceIncludesFile(templateService, templateDoc.uri)) {
+      return [];
+    }
+
+    const templateFileFsPath = getFileFsPath(templateDoc.uri);
+    const start = mapFromPositionToOffset(templateDoc, range.start, templateSourceMap);
+    const end = mapFromPositionToOffset(templateDoc, range.end, templateSourceMap);
+
+    // const { scriptDoc, service } = updateCurrentTextDocument(doc);
+    // const fileName = getFileFsPath(scriptDoc.uri);
+    // const start = scriptDoc.offsetAt(range.start);
+    // const end = scriptDoc.offsetAt(range.end);
+
+    if (!this.supportedCodeFixCodes) {
+      this.supportedCodeFixCodes = new Set(
+        this.tsModule
+          .getSupportedCodeFixes()
+          .map(Number)
+          .filter(x => !isNaN(x))
+      );
+    }
+    const fixableDiagnosticCodes = context.diagnostics
+      .map(d => +d.code!)
+      .filter(c => this.supportedCodeFixCodes.has(c));
+    if (!fixableDiagnosticCodes) {
+      return [];
+    }
+
+    const formatSettings: ts.FormatCodeSettings = getFormatCodeSettings(this.config);
+
+    const result: Command[] = [];
+    const fixes = templateService.getCodeFixesAtPosition(
+      templateFileFsPath,
+      start,
+      end,
+      fixableDiagnosticCodes,
+      formatSettings,
+      /*preferences*/ {}
+    );
+    collectQuickFixCommands(fixes, templateService, result);
+
+    const textRange = { pos: start, end };
+    const refactorings = templateService.getApplicableRefactors(templateFileFsPath, textRange, /*preferences*/ {});
+    collectRefactoringCommands(refactorings, templateFileFsPath, formatSettings, textRange, result);
+
+    return result;
   }
 
   onDocumentRemoved() {}
