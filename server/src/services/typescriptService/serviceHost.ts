@@ -81,6 +81,10 @@ export function getServiceHost(
   const localScriptRegionDocuments = new Map<string, TextDocument>();
   const nodeModuleSnapshots = new Map<string, ts.IScriptSnapshot>();
   const projectFileSnapshots = new Map<string, ts.IScriptSnapshot>();
+  const vueFileScriptExtensions = new Map<string, ts.Extension>();
+  const tsMRcache = tsModule.createModuleResolutionCache(workspacePath, s => s);
+
+  function updateVueCache(fileName: string) {}
 
   const parsedConfig = getParsedConfig(tsModule, workspacePath);
   /**
@@ -164,6 +168,10 @@ export function getServiceHost(
         jsLanguageService = tsModule.createLanguageService(jsHost);
       }
       localScriptRegionDocuments.set(fileFsPath, currentScriptDoc);
+      vueFileScriptExtensions.set(
+        fileFsPath,
+        currentScriptDoc.languageId === 'javasccript' ? ts.Extension.Js : ts.Extension.Ts
+      );
       versions.set(fileFsPath, (versions.get(fileFsPath) || 0) + 1);
     }
     return {
@@ -232,7 +240,9 @@ export function getServiceHost(
       readFile: vueSys.readFile,
       readDirectory: vueSys.readDirectory,
 
-      resolveModuleNames(moduleNames: string[], containingFile: string): ts.ResolvedModule[] {
+      resolveModuleNames(moduleNames: string[], containingFile: string): ts.ResolvedModuleFull[] {
+        logger.logDebug(`resolveModuleNames in ${containingFile} for ${moduleNames.toString()}`);
+
         // in the normal case, delegate to ts.resolveModuleName
         // in the relative-imported.vue case, manually build a resolved filename
         return moduleNames.map(name => {
@@ -242,20 +252,38 @@ export function getServiceHost(
               extension: tsModule.Extension.Ts
             };
           }
+
           if (path.isAbsolute(name) || !isVueFile(name)) {
-            return tsModule.resolveModuleName(name, containingFile, options, tsModule.sys).resolvedModule;
+            return tsModule.resolveModuleName(name, containingFile, options, tsModule.sys, tsMRcache).resolvedModule;
           }
-          const resolved = tsModule.resolveModuleName(name, containingFile, options, vueSys).resolvedModule;
+
+          const resolved = tsModule.resolveModuleName(name, containingFile, options, vueSys, tsMRcache).resolvedModule;
           if (!resolved) {
             return undefined as any;
           }
           if (!resolved.resolvedFileName.endsWith('.vue.ts')) {
             return resolved;
           }
+
           const resolvedFileName = resolved.resolvedFileName.slice(0, -'.ts'.length);
+
+          /**
+           * The resolved .vue.ts file will always have wrong suffix
+           * Read from cache or run the expensive FS read and cache the result
+           */
+          let extension = vueFileScriptExtensions.get(resolvedFileName);
+          if (!extension) {
+            extension = expensiveGetScriptKind(resolvedFileName);
+            vueFileScriptExtensions.set(resolvedFileName, extension);
+          }
+
+          return { resolvedFileName, extension };
+        });
+
+        function expensiveGetScriptKind(resolvedFileName: string) {
           const uri = Uri.file(resolvedFileName);
           let doc = localScriptRegionDocuments.get(resolvedFileName);
-          // Vue file not created yet
+          // Vue file not loaded yet
           if (!doc) {
             doc = updatedScriptRegionDocuments.refreshAndGet(
               TextDocument.create(uri.toString(), 'vue', 0, tsModule.sys.readFile(resolvedFileName) || '')
@@ -268,8 +296,8 @@ export function getServiceHost(
               : doc.languageId === 'tsx'
               ? tsModule.Extension.Tsx
               : tsModule.Extension.Js;
-          return { resolvedFileName, extension };
-        });
+          return extension;
+        }
       },
       getScriptSnapshot: (fileName: string) => {
         if (fileName.includes('node_modules')) {
